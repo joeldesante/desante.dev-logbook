@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desante Dev</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" type="module"></script>
+    <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reset-css@5.0.2/reset.min.css">
+    <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
+    <style>
+        .title {
+            background-color: #FFF;
+            padding: 1rem;
+            font-family: "Instrument Serif", serif;
+            font-size: 1.2rem;
+            line-height: 2rem;
+
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            border-radius: 10px;
+            z-index: 1000;
+            box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .title h1 {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="title">
+        <h1>Welcome to the log book!</h1>
+        <p>Where are you from? Place a marker on your country!</p>
+    </div>
+
+    <div id="map" style="width: 100vw; height: 100vh"></div>
+    <script type="module">
+
+    const sb_URL = 'https://uerutagzdkoftrkronzj.supabase.co'
+    const anon_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlcnV0YWd6ZGtvZnRya3JvbnpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk2MjU4MzYsImV4cCI6MjA3NTIwMTgzNn0.01hA12vsnMpHonb6bnPO66OMlQtfVMGzGSH7M6URBn0' // replace with your anon key
+
+    const supabaseClient = supabase.createClient(sb_URL, anon_KEY)
+
+    // Place all pins down
+    supabaseClient.from('Pins').select('*').then((d, e) => {
+        console.log(d, e)
+        
+        if(d.error !== null) return;
+        console.log(d)
+        d.data.forEach(row => {
+            new maplibregl.Marker().setLngLat([row.long, row.lat]).addTo(map)
+        });
+    })
+
+    let marker = null
+    let rowId = getCookie('pin_row_id') // get stored row id if any
+
+    async function savePin(long, lat) {
+      if(rowId) {
+        // Update existing row
+        const { data, error } = await supabaseClient
+          .from('Pins')
+          .update({ long: long, lat: lat })
+          .eq('id', rowId)
+
+        if(error) console.error('Update failed:', error)
+        else console.log('Updated:', data)
+      } else {
+        // Insert new row
+        const { data, error } = await supabaseClient
+          .from('Pins')
+          .insert([{ long: long, lat: lat }])
+          .select() // return inserted row with id
+
+        if(error) console.error('Insert failed:', error)
+        else {
+          console.log('Inserted:', data)
+          rowId = data[0].id
+          setCookie('pin_row_id', rowId, 30) // store row id in cookie for 30 days
+        }
+      }
+    }
+
+    // Initialize map
+    const map = new maplibregl.Map({
+      style: 'https://tiles.openfreemap.org/styles/liberty',
+      center: [0, 0],
+      zoom: 0,
+      container: 'map',
+    })
+
+    map.addControl(new maplibregl.NavigationControl())
+
+    // Handle map click
+    map.on('click', async (ev) => {
+      const long = ev.lngLat.lng
+      const lat = ev.lngLat.lat
+
+      if(marker === null) {
+        marker = new maplibregl.Marker().setLngLat([long, lat]).addTo(map)
+      } else {
+        marker.setLngLat([long, lat])
+      }
+
+      await savePin(long, lat)
+    })
+
+    // --- Cookie helpers ---
+    function setCookie(name, value, days) {
+      const expires = new Date(Date.now() + days*24*60*60*1000).toUTCString()
+      document.cookie = name + "=" + value + "; expires=" + expires + "; path=/"
+    }
+
+    function getCookie(name) {
+      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+      return match ? match[2] : null
+    }
+    </script>
+</body>
+</html>
+
